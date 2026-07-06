@@ -701,7 +701,7 @@ tr:hover td{background:var(--panel-alt);}
     <!-- MARKET INTELLIGENCE -->
     <section class="view" id="view-marketintel">
       <div class="callout callout-warn" style="margin-bottom:18px;">
-        ⚠️ <div><strong>Honest limits on sources:</strong> Reddit's public search works directly from your browser (no key needed) and is wired up below. News/blog search needs your proxy server plus a news API key (see Integrations). App Store and Google Play don't offer a simple public reviews API — most teams use a paid tool (AppFollow, Sensor Tower) or manual export for that; you can log those manually below in the meantime. Sites like WSJ are typically paywalled and won't return usable results either way.</div>
+        ⚠️ <div><strong>Honest limits on sources:</strong> Reddit search will attempt a direct browser call first, but Reddit blocks most cross-site requests (CORS) — set a Proxy Server URL in Integrations for it to work reliably every time. News/blog search needs your proxy server plus a news API key (see Integrations). App Store and Google Play don't offer a simple public reviews API — most teams use a paid tool (AppFollow, Sensor Tower) or manual export for that; you can log those manually below in the meantime. Sites like WSJ are typically paywalled and won't return usable results either way.</div>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -2427,9 +2427,13 @@ document.getElementById('addWatchBtn').addEventListener('click', ()=>{
 async function fetchRedditMentions(watchId){
   const w = state.watchlist.find(x=>x.id===watchId);
   const query = (w.keywords||w.name).split(',')[0].trim();
+  const usingProxy = !!state.proxyBaseUrl;
+  const url = usingProxy
+    ? `${state.proxyBaseUrl}/reddit?q=${encodeURIComponent(query)}`
+    : `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=8`;
   try{
-    toast('Searching Reddit for "'+query+'"…');
-    const res = await fetch(`https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&sort=new&limit=8`);
+    toast('Searching Reddit for "'+query+'"'+(usingProxy?' (via proxy)':'')+'…');
+    const res = await fetch(url);
     if(!res.ok) throw new Error('Reddit returned '+res.status);
     const data = await res.json();
     const posts = (data.data && data.data.children) || [];
@@ -2447,7 +2451,11 @@ async function fetchRedditMentions(watchId){
     toast(`Pulled ${posts.length} Reddit results for ${w.name}`);
   }catch(err){
     console.error(err);
-    toast('Reddit search failed: '+err.message+' (Reddit occasionally rate-limits anonymous browser requests — try again shortly)', true);
+    if(usingProxy){
+      toast('Reddit search failed via proxy: '+err.message+' — check your Worker is deployed with the /reddit route and redeployed recently', true);
+    } else {
+      toast('Direct Reddit search failed — this is almost always Reddit blocking cross-site browser requests (CORS), not a temporary rate limit. Set a Proxy Server URL in Integrations to fix this permanently.', true);
+    }
   }
 }
 
